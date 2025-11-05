@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Make the app truly full screen */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Enable smooth scrolling for the Landing Page */
+html {
+  scroll-behavior: smooth;
+}
+body {
+  background-color: black;
+  color: white;
+}
+
