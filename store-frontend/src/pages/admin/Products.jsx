@@ -1,184 +1,635 @@
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { FaPlus, FaTimes } from "react-icons/fa";
+import { useState, useEffect, useRef } from "react";
+import { FaPlus, FaEdit, FaTrash, FaToggleOn, FaToggleOff, FaSearch, FaEye, FaBarcode } from "react-icons/fa";
+import axios from "../../utils/axios";
+import Pagination from "../../components/Pagination";
+import { toast } from "../../components/Toast";
 
 export default function Products() {
-  const [products, setProducts] = useState([
-    { id: 1, name: "Chippy (Snack)", category: "Snacks", price: 15, stock: 120 },
-    { id: 2, name: "Coca-Cola 1L", category: "Drinks", price: 45, stock: 80 },
-    { id: 3, name: "Rice 1kg", category: "Essentials", price: 60, stock: 200 },
-    { id: 4, name: "Laundry Soap", category: "Essentials", price: 25, stock: 35 },
-    { id: 5, name: "Vinegar 500ml", category: "Essentials", price: 20, stock: 18 },
-    { id: 6, name: "SkyFlakes", category: "Snacks", price: 12, stock: 90 },
-    { id: 7, name: "Bottled Water 500ml", category: "Drinks", price: 20, stock: 150 },
-    { id: 8, name: "Eggs (1 Dozen)", category: "Essentials", price: 90, stock: 24 },
-  ]);
-
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [newProduct, setNewProduct] = useState({
+  const [editing, setEditing] = useState(null);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const barcodeInputRef = useRef(null);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  const [formData, setFormData] = useState({
     name: "",
-    category: "Snacks",
+    description: "",
+    category_id: "",
     price: "",
     stock: "",
+    reorder_point: "10",
+    sku: "",
+    barcode: "",
+    expiration_date: "",
+    is_active: true
   });
 
-  const handleAddProduct = (e) => {
-    e.preventDefault();
-    if (!newProduct.name || !newProduct.price || !newProduct.stock) return;
-    const id = products.length + 1;
-    setProducts([
-      ...products,
-      {
-        id,
-        ...newProduct,
-        price: parseFloat(newProduct.price),
-        stock: parseInt(newProduct.stock),
-      },
-    ]);
-    setNewProduct({ name: "", category: "Snacks", price: "", stock: "" });
-    setShowModal(false);
+  // Fetch products and categories
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get('/api/products');
+      
+      // Process products to mark expired ones as inactive
+      const processedProducts = response.data.map(product => {
+        if (product.expiration_date) {
+          const expirationDate = new Date(product.expiration_date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          // If product is expired but still active, mark it as inactive
+          if (expirationDate < today && product.is_active) {
+            return { ...product, is_active: false, _isExpired: true };
+          }
+        }
+        return product;
+      });
+      
+      setProducts(processedProducts);
+    } catch (err) {
+      toast.error('Failed to fetch products');
+      console.error('Error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <div className="relative p-4 md:p-6 bg-gradient-to-b from-black via-gray-900 to-black min-h-screen text-white">
-      <h2 className="text-3xl md:text-4xl font-extrabold text-yellow-400 drop-shadow-[0_0_6px_#FFD70060] text-center mb-8">
-        Product Inventory
-      </h2>
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get('/api/categories');
+      setCategories(response.data.filter(cat => cat.is_active));
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    }
+  };
 
-      {/* Add Product Button */}
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 text-yellow-300 px-4 py-2 rounded-lg transition-all hover:scale-105 shadow-[0_0_10px_#FFD70030]"
-        >
-          <FaPlus /> Add Product
-        </button>
+  useEffect(() => {
+    fetchProducts();
+    fetchCategories();
+  }, []);
+
+  // Keyboard shortcut for adding products (Ctrl+Shift+T)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        setShowModal(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Add or Update product
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.name || !formData.category_id || !formData.price || !formData.stock) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      if (editing) {
+        // Update existing product
+        const response = await axios.put(`/api/products/${editing}`, formData);
+        setProducts(products.map(p => p.id === editing ? response.data : p));
+        toast.success("Product updated successfully!");
+      } else {
+        // Add new product
+        const response = await axios.post('/api/products', formData);
+        setProducts([...products, response.data]);
+        toast.success("Product added successfully!");
+      }
+      
+      resetForm();
+      setShowModal(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save product');
+      console.error('Error:', err);
+    }
+  };
+
+  // Delete product
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this product?")) return;
+    
+    try {
+      await axios.delete(`/api/products/${id}`);
+      setProducts(products.filter(p => p.id !== id));
+      toast.success("Product deleted successfully!");
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete product');
+      console.error('Error:', err);
+    }
+  };
+
+  // Edit product - load data into form
+  const handleEdit = (product) => {
+    setEditing(product.id);
+    setFormData({
+      name: product.name,
+      description: product.description || "",
+      category_id: product.category_id,
+      price: product.price,
+      stock: product.stock,
+      reorder_point: product.reorder_point || "10",
+      sku: product.sku || "",
+      barcode: product.barcode || "",
+      expiration_date: product.expiration_date || "",
+      is_active: product.is_active
+    });
+    setShowModal(true);
+  };
+
+  // View product details
+  const handleView = (product) => {
+    const isExpired = product.expiration_date && new Date(product.expiration_date) < new Date();
+    const message = `
+Product: ${product.name}
+SKU: ${product.sku || 'N/A'}
+Barcode: ${product.barcode || 'N/A'}
+Category: ${product.category?.name || 'N/A'}
+Price: ₱${parseFloat(product.price).toLocaleString()}
+Stock: ${product.stock}
+Reorder Point: ${product.reorder_point || 'N/A'}
+Expiration: ${product.expiration_date ? new Date(product.expiration_date).toLocaleDateString() : 'N/A'}${isExpired ? ' (EXPIRED)' : ''}
+Status: ${product.is_active ? 'Active' : 'Inactive'}
+Description: ${product.description || 'N/A'}
+    `.trim();
+    alert(message);
+  };
+
+  // Toggle is_active status
+  const handleToggleActive = async (product) => {
+    try {
+      const response = await axios.put(`/api/products/${product.id}`, {
+        ...product,
+        category_id: product.category_id,
+        is_active: !product.is_active
+      });
+      
+      setProducts(products.map(p => p.id === product.id ? response.data : p));
+      toast.success(`Product ${response.data.is_active ? 'activated' : 'deactivated'}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to toggle status');
+      console.error('Error:', err);
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      description: "",
+      category_id: "",
+      price: "",
+      stock: "",
+      reorder_point: "10",
+      sku: "",
+      barcode: "",
+      expiration_date: "",
+      is_active: true
+    });
+    setEditing(null);
+  };
+
+  const handleModalClose = () => {
+    setShowModal(false);
+    resetForm();
+  };
+
+  // Barcode scanner search
+  const handleBarcodeSearch = async (e) => {
+    e.preventDefault();
+    if (!barcodeInput.trim()) {
+      toast.error("Please enter a barcode");
+      return;
+    }
+
+    try {
+      const response = await axios.post('/api/products/search-barcode', {
+        barcode: barcodeInput.trim()
+      });
+      
+      // Open the product in edit mode
+      handleEdit(response.data);
+      setBarcodeInput("");
+      toast.success("Product found!");
+    } catch (err) {
+      if (err.response?.status === 404) {
+        // Product not found, open modal to add new product with this barcode
+        setFormData({
+          ...formData,
+          barcode: barcodeInput.trim()
+        });
+        setShowModal(true);
+        setBarcodeInput("");
+        toast.info("Product not found. You can add it now with this barcode.");
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to search product');
+      }
+    }
+  };
+
+  // Search and pagination
+  const filteredProducts = products.filter((product) => 
+    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (product.category && product.category.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentProducts = filteredProducts.slice(indexOfFirstItem, indexOfLastItem);
+
+  const handlePageChange = (pageNumber) => {
+    setCurrentPage(pageNumber);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  return (
+    <div className="min-h-screen p-6 md:p-8 bg-white text-gray-900">
+      {/* Header */}
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold text-yellow-400 mb-2">
+          Products
+        </h2>
+        <p className="text-gray-600 text-sm">Manage your product inventory</p>
       </div>
 
-      {/* Product Table */}
-      <div className="overflow-x-auto bg-gradient-to-br from-yellow-100/10 to-yellow-200/5 backdrop-blur-md border border-yellow-400/20 rounded-3xl shadow-[0_0_15px_#FFD70020]">
-        <table className="min-w-full divide-y divide-yellow-400/20">
-          <thead className="bg-black/60 text-yellow-400 uppercase text-sm font-semibold tracking-wide">
-            <tr>
-              <th className="py-4 px-6 text-center">ID</th>
-              <th className="py-4 px-6 text-left">Product Name</th>
-              <th className="py-4 px-6 text-center">Category</th>
-              <th className="py-4 px-6 text-center">Price (₱)</th>
-              <th className="py-4 px-6 text-center">Stock</th>
-              <th className="py-4 px-6 text-center">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-yellow-400/10">
-            {products.map((p) => (
-              <tr
-                key={p.id}
-                className="hover:bg-yellow-100/5 transition duration-300"
-              >
-                <td className="py-4 px-6 text-center text-yellow-300">{p.id}</td>
-                <td className="py-4 px-6 text-white font-medium">{p.name}</td>
-                <td className="py-4 px-6 text-center text-gray-300">
-                  {p.category}
+      {/* Search Bar and Add Button */}
+      <div className="flex flex-col gap-4 mb-6">
+        {/* Barcode Scanner */}
+        <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 rounded-xl p-4">
+          <form onSubmit={handleBarcodeSearch} className="flex items-center gap-3">
+            <FaBarcode className="text-yellow-600 text-2xl" />
+            <div className="flex-1">
+              <input
+                ref={barcodeInputRef}
+                type="text"
+                placeholder="Scan or enter barcode to search/add product..."
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+                className="w-full bg-white border border-yellow-300 text-gray-700 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-500 placeholder-gray-500 text-sm"
+                autoFocus
+              />
+            </div>
+            <button 
+              type="submit"
+              className="bg-yellow-500 hover:bg-yellow-600 text-white px-5 py-2.5 rounded-xl transition-all font-medium text-sm"
+            >
+              Search
+            </button>
+          </form>
+        </div>
+
+        {/* Text Search and Add Button */}
+        <div className="flex flex-col md:flex-row gap-4 justify-between">
+          <div className="relative flex-1 max-w-md">
+            <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-300 text-gray-700 pl-11 pr-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 placeholder-gray-500 text-sm"
+            />
+          </div>
+          <button 
+            onClick={() => setShowModal(true)} 
+            className="flex items-center justify-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-black px-5 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm shadow-lg shadow-yellow-400/20"
+          >
+            <FaPlus /> Add Product
+          </button>
+        </div>
+      </div>
+
+      {/* Products Table */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-100 border-b border-gray-200">
+              <tr className="text-gray-600 text-sm font-medium">
+                <th className="py-3 px-4 text-left">#</th>
+                <th className="py-3 px-4 text-left">Product Name</th>
+                <th className="py-3 px-4 text-left">Category</th>
+                <th className="py-3 px-4 text-right">Price</th>
+                <th className="py-3 px-4 text-right">Stock</th>
+                <th className="py-3 px-4 text-left">Expiration</th>
+                <th className="py-3 px-4 text-center">Status</th>
+                <th className="py-3 px-4 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentProducts.map((product, index) => (
+                <tr key={product.id} className="border-b border-gray-200 hover:bg-gray-50 transition text-sm">
+                  <td className="py-3 px-4 text-gray-600">{indexOfFirstItem + index + 1}</td>
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <div className="font-medium text-gray-900">{product.name}</div>
+                        {product.sku && (
+                          <div className="text-xs text-gray-500">SKU: {product.sku}</div>
+                        )}
+                      </div>
+                      {product.expiration_date && new Date(product.expiration_date) < new Date() && (
+                        <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs font-semibold rounded border border-red-500/30">
+                          EXPIRED
+                        </span>
+                      )}
+                    </div>
                 </td>
-                <td className="py-4 px-6 text-center text-yellow-400 font-semibold">
-                  ₱{p.price.toLocaleString()}
+                <td className="py-3 px-4 text-gray-700">{product.category?.name || 'N/A'}</td>
+                <td className="py-3 px-4 text-right text-yellow-400 font-bold">₱{parseFloat(product.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                <td className="py-3 px-4 text-center">
+                  <span className={product.stock <= (product.reorder_point || 10) ? 'text-red-400 font-bold' : 'text-gray-700'}>
+                    {product.stock}
+                  </span>
                 </td>
-                <td className="py-4 px-6 text-center text-gray-200">{p.stock}</td>
-                <td className="py-4 px-6 text-center">
-                  {p.stock <= 20 ? (
-                    <span className="px-3 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/40 text-xs font-semibold">
-                      Low Stock
+                <td className="py-3 px-4 text-gray-700 text-xs">
+                  {product.expiration_date ? (
+                    <span className={
+                      new Date(product.expiration_date) < new Date() 
+                        ? 'text-red-400 font-semibold'
+                        : new Date(product.expiration_date) < new Date(Date.now() + 30*24*60*60*1000)
+                        ? 'text-yellow-400 font-semibold'
+                        : 'text-green-400'
+                    }>
+                      {new Date(product.expiration_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   ) : (
-                    <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/40 text-xs font-semibold">
-                      In Stock
-                    </span>
+                    <span className="text-gray-500">N/A</span>
                   )}
+                </td>
+                <td className="py-3 px-4 text-center">
+                  {product.expiration_date && new Date(product.expiration_date) < new Date() ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <button
+                        disabled
+                        className="flex items-center justify-center gap-1 mx-auto cursor-not-allowed opacity-50"
+                        title="Cannot activate expired products"
+                      >
+                        <FaToggleOff className="text-gray-500 text-2xl" />
+                      </button>
+                      <span className="text-xs text-gray-500">Expired</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleActive(product)}
+                      className="flex items-center justify-center gap-1 mx-auto transition-transform hover:scale-110"
+                      title={product.is_active ? "Deactivate product" : "Activate product"}
+                    >
+                      {product.is_active ? (
+                        <FaToggleOn className="text-green-400 text-2xl" />
+                      ) : (
+                        <FaToggleOff className="text-gray-500 text-2xl" />
+                      )}
+                    </button>
+                  )}
+                </td>
+                <td className="py-3 px-4 text-center">
+                  <div className="flex justify-center gap-3">
+                    <button 
+                      onClick={() => handleView(product)}
+                      className="text-yellow-400 hover:text-yellow-300 transition-colors"
+                      title="View details"
+                    >
+                      <FaEye />
+                    </button>
+                    <button 
+                      onClick={() => handleEdit(product)}
+                      className="text-blue-400 hover:text-blue-300 transition-colors"
+                      title="Edit product"
+                    >
+                      <FaEdit />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(product.id)}
+                      className="text-red-400 hover:text-red-300 transition-colors"
+                      title="Delete product"
+                    >
+                      <FaTrash />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
+            {loading ? (
+              <tr>
+                <td colSpan="8" className="text-center py-8">
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-gray-400">Loading products...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : products.length === 0 ? (
+              <tr>
+                <td colSpan="8" className="text-center py-8 text-gray-500 italic">
+                  No products available.
+                </td>
+              </tr>
+            ) : filteredProducts.length === 0 ? (
+              <tr>
+                <td colSpan="8" className="text-center py-8 text-gray-500 italic">
+                  No products found matching "{searchQuery}"
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
+        </div>
       </div>
 
-      {/* Add Product Modal */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50"
-          >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              className="bg-gradient-to-b from-gray-950 to-black border border-yellow-400/20 rounded-2xl p-6 w-[90%] max-w-md shadow-[0_0_20px_#FFD70030]"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-yellow-300">
-                  Add New Product
-                </h3>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="text-yellow-400 hover:text-yellow-200"
-                >
-                  <FaTimes />
-                </button>
+      {/* Pagination */}
+      {!loading && filteredProducts.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+          itemsPerPage={itemsPerPage}
+          totalItems={filteredProducts.length}
+          onItemsPerPageChange={handleItemsPerPageChange}
+        />
+      )}
+
+      {/* Add/Edit Product Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-yellow-400/30 rounded-2xl shadow-2xl shadow-yellow-400/10 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+              <h3 className="text-2xl font-bold text-gray-900">
+                {editing ? 'Edit Product' : 'Add New Product'}
+              </h3>
+              <button
+                onClick={handleModalClose}
+                className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors"
+              >
+                ×
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-gray-700 text-sm font-medium mb-2 block">
+                    Product Name <span className="text-red-400">*</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="Enter product name" 
+                    value={formData.name} 
+                    onChange={(e) => setFormData({...formData, name: e.target.value})} 
+                    required 
+                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 placeholder-gray-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-gray-700 text-sm font-medium mb-2 block">
+                    <FaBarcode className="inline mr-2" />
+                    Barcode (Optional)
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="Enter or scan barcode" 
+                    value={formData.barcode} 
+                    onChange={(e) => setFormData({...formData, barcode: e.target.value})} 
+                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 placeholder-gray-500 text-sm"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  placeholder="Product Name"
-                  value={newProduct.name}
-                  onChange={(e) =>
-                    setNewProduct({ ...newProduct, name: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-black/40 border border-yellow-400/30 rounded-lg text-yellow-200 placeholder-yellow-500/50 focus:outline-none focus:border-yellow-400"
+              <div>
+                <label className="text-gray-700 text-sm font-medium mb-2 block">
+                  Description
+                </label>
+                <textarea
+                  placeholder="Enter product description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  rows="3"
+                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 placeholder-gray-500 resize-none text-sm"
                 />
-                <select
-                  value={newProduct.category}
-                  onChange={(e) =>
-                    setNewProduct({ ...newProduct, category: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-black/40 border border-yellow-400/30 rounded-lg text-yellow-200 focus:outline-none focus:border-yellow-400"
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-gray-700 text-sm font-medium mb-2 block">
+                    Category <span className="text-red-400">*</span>
+                  </label>
+                  <select 
+                    value={formData.category_id} 
+                    onChange={(e) => setFormData({...formData, category_id: e.target.value})} 
+                    required
+                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 text-sm"
+                  >
+                    <option value="">Select Category</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="text-gray-700 text-sm font-medium mb-2 block">
+                    Price (₱) <span className="text-red-400">*</span>
+                  </label>
+                  <input 
+                    type="number" 
+                    placeholder="0.00" 
+                    value={formData.price} 
+                    onChange={(e) => setFormData({...formData, price: e.target.value})} 
+                    required 
+                    step="0.01"
+                    min="0"
+                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 placeholder-gray-500 text-sm"
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-gray-700 text-sm font-medium mb-2 block">
+                    Stock <span className="text-red-400">*</span>
+                  </label>
+                  <input 
+                    type="number" 
+                    placeholder="0" 
+                    value={formData.stock} 
+                    onChange={(e) => setFormData({...formData, stock: e.target.value})} 
+                    required 
+                    min="0"
+                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 placeholder-gray-500 text-sm"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-gray-700 text-sm font-medium mb-2 block">
+                    Reorder Point
+                  </label>
+                  <input 
+                    type="number" 
+                    placeholder="10" 
+                    value={formData.reorder_point} 
+                    onChange={(e) => setFormData({...formData, reorder_point: e.target.value})} 
+                    min="0"
+                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 placeholder-gray-500 text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1.5">Alert when stock falls below this level</p>
+                </div>
+                
+                <div>
+                  <label className="text-gray-700 text-sm font-medium mb-2 block">
+                    Expiration Date
+                  </label>
+                  <input 
+                    type="date" 
+                    value={formData.expiration_date} 
+                    onChange={(e) => setFormData({...formData, expiration_date: e.target.value})} 
+                    className="w-full bg-gray-50 border border-gray-300 text-gray-900 px-4 py-2.5 rounded-xl focus:outline-none focus:border-yellow-400/50 text-sm"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-3 pt-4">
+                <button 
+                  type="submit" 
+                  className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black px-4 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm shadow-lg shadow-yellow-400/20"
                 >
-                  <option>Snacks</option>
-                  <option>Drinks</option>
-                  <option>Essentials</option>
-                  <option>Others</option>
-                </select>
-                <input
-                  type="number"
-                  placeholder="Price (₱)"
-                  value={newProduct.price}
-                  onChange={(e) =>
-                    setNewProduct({ ...newProduct, price: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-black/40 border border-yellow-400/30 rounded-lg text-yellow-200 placeholder-yellow-500/50 focus:outline-none focus:border-yellow-400"
-                />
-                <input
-                  type="number"
-                  placeholder="Stock Quantity"
-                  value={newProduct.stock}
-                  onChange={(e) =>
-                    setNewProduct({ ...newProduct, stock: e.target.value })
-                  }
-                  className="w-full px-4 py-2 bg-black/40 border border-yellow-400/30 rounded-lg text-yellow-200 placeholder-yellow-500/50 focus:outline-none focus:border-yellow-400"
-                />
-
-                <button
-                  onClick={handleAddProduct}
-                  className="w-full bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-400/30 text-yellow-300 py-2 rounded-lg font-semibold transition-all hover:scale-105"
+                  {editing ? 'Update Product' : 'Add Product'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleModalClose} 
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2.5 rounded-xl transition-all duration-200 font-medium text-sm"
                 >
-                  Add Product
+                  Cancel
                 </button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

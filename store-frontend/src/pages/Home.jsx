@@ -1,49 +1,37 @@
-import { FaKey } from "react-icons/fa";
+import React from 'react';
 
 export default function Home() {
   return (
-    <div className="relative flex flex-col items-center justify-center w-screen h-screen bg-gradient-to-br from-black via-gray-950 to-black text-white overflow-hidden">
-      
-      {/* Subtle animated gold background glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,215,0,0.08),_transparent_70%)] blur-3xl animate-pulse-slow" />
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-black via-gray-900 to-black text-white px-6 py-20">
+      {/* Subtle background glow */}
+      <div className="absolute top-20 left-1/4 w-96 h-96 bg-yellow-500/5 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-yellow-500/5 rounded-full blur-[120px] pointer-events-none"></div>
 
-      {/* Center Content */}
-      <div className="relative z-10 flex flex-col items-center text-center px-6 space-y-10">
-        
-        {/* Key Emblem */}
-        <div className="flex flex-col items-center justify-center space-y-3">
-          <FaKey className="text-yellow-500 text-8xl rotate-90 drop-shadow-[0_0_8px_#FFD70060]" />
-          <div className="h-[2px] w-16 bg-yellow-500/60 rounded-full" />
-        </div>
-
-        {/* Store Name */}
-        <div className="px-10 py-4 rounded-full border border-yellow-500/30 bg-gradient-to-r from-yellow-500/10 to-transparent shadow-[0_0_25px_#FFD70020] backdrop-blur-sm">
-          <h1
-            className="text-6xl md:text-7xl font-[Cinzel] font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-yellow-500 to-yellow-400 drop-shadow-[0_0_8px_#FFD70050]"
-            style={{ letterSpacing: "3px" }}
-          >
-            RaiLyn’s Store
-          </h1>
-        </div>
-
-        {/* Tagline */}
-        <p className="text-gray-300 max-w-2xl text-lg leading-relaxed font-light">
-          Discover a collection where <span className="text-yellow-400 font-semibold">luxury</span> meets{" "}
-          <span className="text-yellow-400 font-semibold">refinement</span>.  
-          Step into the golden world of RaiLyn’s — where every product defines sophistication.
-        </p>
-
-        {/* Button */}
-        <button className="mt-6 px-12 py-4 rounded-full bg-gradient-to-r from-yellow-600 to-yellow-400 text-black font-semibold text-lg tracking-wide shadow-[0_0_10px_#FFD70020] hover:shadow-[0_0_25px_#FFD70050] hover:scale-105 transition-all duration-300">
-          Shop Now
-        </button>
+      {/* Key Icon in glowing box */}
+      <div className="mb-12 p-8 bg-yellow-400/10 rounded-3xl border border-yellow-400/20 shadow-lg shadow-yellow-400/20">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="1.5"
+          stroke="currentColor"
+          className="w-24 h-24 md:w-32 md:h-32 text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"
+          />
+        </svg>
       </div>
 
-      {/* Elegant gold borders */}
-      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent" />
-      <div className="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-400/30 to-transparent" />
-      <div className="absolute left-0 top-0 h-full w-[1px] bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent" />
-      <div className="absolute right-0 top-0 h-full w-[1px] bg-gradient-to-b from-transparent via-yellow-400/30 to-transparent" />
+      {/* Store Name - Large and Bold */}
+      <h1 className="text-7xl md:text-8xl lg:text-9xl font-black mb-6 tracking-tight text-center">
+        RaiLyn<span className="text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.6)]">'s</span> Store
+      </h1>
+
+      {/* Divider */}
+      <div className="h-1.5 w-48 bg-gradient-to-r from-transparent via-yellow-400 to-transparent rounded-full shadow-[0_0_15px_rgba(250,204,21,0.4)]"></div>
     </div>
   );
 }
